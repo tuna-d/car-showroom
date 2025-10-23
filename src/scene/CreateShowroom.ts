@@ -7,7 +7,12 @@ import {
   Scene,
   Vector3,
   Texture,
+  ImportMeshAsync,
+  Axis,
+  Space,
 } from "@babylonjs/core"
+
+import "@babylonjs/loaders"
 
 export class CreateShowroom {
   scene: Scene
@@ -43,6 +48,8 @@ export class CreateShowroom {
   CreateEnvironment(): void {
     this.CreateGround()
     this.CreateSideWalls()
+    this.CreateMclarenModel()
+    this.CreatePorscheModel()
   }
 
   CreateGround(): void {
@@ -159,5 +166,20 @@ export class CreateShowroom {
     })
 
     return pbr
+  }
+
+  async CreateMclarenModel(): Promise<void> {
+    const model = await ImportMeshAsync("./models/mclaren.glb", this.scene)
+    const root = model.meshes[0]
+
+    root.position = new Vector3(4.5, 0, 4.5)
+    root.rotate(Axis.Y, -(3 * Math.PI) / 4, Space.LOCAL)
+  }
+  async CreatePorscheModel(): Promise<void> {
+    const model = await ImportMeshAsync("./models/911.glb", this.scene)
+    const root = model.meshes[0]
+
+    root.position = new Vector3(-4.5, 0, -4.5)
+    root.rotate(Axis.Y, -Math.PI / 4, Space.LOCAL)
   }
 }
