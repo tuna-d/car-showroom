@@ -1,7 +1,6 @@
 import {
   Engine,
   FreeCamera,
-  HemisphericLight,
   MeshBuilder,
   PBRMaterial,
   Scene,
@@ -10,6 +9,11 @@ import {
   ImportMeshAsync,
   Axis,
   Space,
+  SpotLight,
+  PointLight,
+  LightGizmo,
+  GizmoManager,
+  Light,
 } from "@babylonjs/core"
 
 import "@babylonjs/loaders"
@@ -35,13 +39,6 @@ export class CreateShowroom {
     camera.attachControl()
     camera.speed = 0.2
 
-    const hemiLight = new HemisphericLight(
-      "hemiLight",
-      new Vector3(0, 1, 0),
-      this.scene
-    )
-    hemiLight.intensity = 0.75
-
     return scene
   }
 
@@ -50,6 +47,8 @@ export class CreateShowroom {
     this.CreateSideWalls()
     this.CreateMclarenModel()
     this.CreatePorscheModel()
+    this.CreateLights()
+    this.PositionWallLamps()
   }
 
   CreateGround(): void {
@@ -181,5 +180,75 @@ export class CreateShowroom {
 
     root.position = new Vector3(-4.5, 0, -4.5)
     root.rotate(Axis.Y, -Math.PI / 4, Space.LOCAL)
+  }
+
+  CreateLights(): void {
+    const spotLight1 = new SpotLight(
+      "spotLight",
+      new Vector3(4.5, 6, -9),
+      new Vector3(-4.5, -2, 2),
+      Math.PI / 2,
+      10,
+      this.scene
+    )
+
+    spotLight1.intensity = 250
+
+    spotLight1.shadowEnabled = true
+    spotLight1.shadowMaxZ = 10
+    spotLight1.shadowMinZ = 1
+
+    const spotLight2 = new SpotLight(
+      "spotLight",
+      new Vector3(-4.5, 6, -2),
+      new Vector3(4.5, -2, 3),
+      Math.PI / 2,
+      10,
+      this.scene
+    )
+
+    spotLight2.intensity = 250
+
+    spotLight2.shadowEnabled = true
+    spotLight2.shadowMaxZ = 10
+    spotLight2.shadowMinZ = 1
+  }
+
+  async CreateWallLamp(position: Vector3, rotation: number): Promise<void> {
+    const model = await ImportMeshAsync("./models/wall-lamp.glb", this.scene)
+    const root = model.meshes[0]
+
+    root.scaling = new Vector3(3, 3, 3)
+    root.position = position //input
+    root.rotate(Axis.X, -Math.PI / 2, Space.LOCAL)
+    root.rotate(Axis.Z, rotation, Space.LOCAL) //input
+
+    const pointLight = new PointLight(
+      "pointLight",
+      new Vector3(0, 0.13, -0.05),
+      this.scene
+    )
+
+    pointLight.intensity = 0.6
+    pointLight.parent = root
+  }
+
+  PositionWallLamps(): void {
+    this.CreateWallLamp(new Vector3(-9, 4, -4.5), Math.PI / 2)
+    this.CreateWallLamp(new Vector3(-9, 4, 4.5), Math.PI / 2)
+    this.CreateWallLamp(new Vector3(9, 4, -4.5), -Math.PI / 2)
+    this.CreateWallLamp(new Vector3(9, 4, 4.5), -Math.PI / 2)
+  }
+
+  CreateGizmos(customLight: Light): void {
+    const lightGizmo = new LightGizmo()
+    lightGizmo.scaleRatio = 2
+    lightGizmo.light = customLight
+
+    const gizmoManager = new GizmoManager(this.scene)
+    gizmoManager.positionGizmoEnabled = true
+    gizmoManager.rotationGizmoEnabled = true
+    gizmoManager.usePointerToAttachGizmos = false
+    gizmoManager.attachToMesh(lightGizmo.attachedMesh)
   }
 }
