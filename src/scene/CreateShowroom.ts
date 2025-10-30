@@ -14,6 +14,10 @@ import {
   LightGizmo,
   GizmoManager,
   Light,
+  ShadowGenerator,
+  AbstractMesh,
+  ShadowLight,
+  AxesViewer,
 } from "@babylonjs/core"
 
 import "@babylonjs/loaders"
@@ -21,6 +25,9 @@ import "@babylonjs/loaders"
 export class CreateShowroom {
   scene: Scene
   engine: Engine
+  mclaren!: AbstractMesh
+  porsche!: AbstractMesh
+  spotLights: ShadowLight[] = []
 
   constructor(private canvas: HTMLCanvasElement) {
     this.engine = new Engine(this.canvas, true)
@@ -39,16 +46,23 @@ export class CreateShowroom {
     camera.attachControl()
     camera.speed = 0.2
 
+    //Use this only if needed to visualize axes.
+    //const axes = new AxesViewer(this.scene, 3)
+
     return scene
   }
 
   CreateEnvironment(): void {
     this.CreateGround()
     this.CreateSideWalls()
-    this.CreateMclarenModel()
-    this.CreatePorscheModel()
     this.CreateLights()
     this.PositionWallLamps()
+    this.CreatePorscheModel().then(() =>
+      this.CreateShadows(this.spotLights[0], this.porsche)
+    )
+    this.CreateMclarenModel().then(() =>
+      this.CreateShadows(this.spotLights[1], this.mclaren)
+    )
   }
 
   CreateGround(): void {
@@ -64,6 +78,8 @@ export class CreateShowroom {
     ground.position = new Vector3(0, 0, 0)
 
     ground.material = this.CreateGroundMat()
+
+    ground.receiveShadows = true
   }
 
   CreateGroundMat(): PBRMaterial {
@@ -124,6 +140,8 @@ export class CreateShowroom {
     wall.rotation.y = rotation
 
     wall.material = this.CreateWallMat()
+
+    wall.receiveShadows = true
   }
 
   CreateWallMat(): PBRMaterial {
@@ -169,24 +187,28 @@ export class CreateShowroom {
 
   async CreateMclarenModel(): Promise<void> {
     const model = await ImportMeshAsync("./models/mclaren.glb", this.scene)
-    const root = model.meshes[0]
+    const mclarenRoot = model.meshes[0]
 
-    root.position = new Vector3(4.5, 0, 4.5)
-    root.rotate(Axis.Y, -(3 * Math.PI) / 4, Space.LOCAL)
+    if (mclarenRoot) this.mclaren = mclarenRoot
+
+    mclarenRoot.position = new Vector3(4.5, 0, 4.5)
+    mclarenRoot.rotate(Axis.Y, -(3 * Math.PI) / 4, Space.LOCAL)
   }
   async CreatePorscheModel(): Promise<void> {
     const model = await ImportMeshAsync("./models/911.glb", this.scene)
-    const root = model.meshes[0]
+    const porscheRoot = model.meshes[0]
 
-    root.position = new Vector3(-4.5, 0, -4.5)
-    root.rotate(Axis.Y, -Math.PI / 4, Space.LOCAL)
+    if (porscheRoot) this.porsche = porscheRoot
+
+    porscheRoot.position = new Vector3(-4.5, 0, -4.5)
+    porscheRoot.rotate(Axis.Y, -Math.PI / 4, Space.LOCAL)
   }
 
   CreateLights(): void {
     const spotLight1 = new SpotLight(
       "spotLight",
-      new Vector3(4.5, 6, -9),
-      new Vector3(-4.5, -2, 2),
+      new Vector3(4.5, 3, -9),
+      new Vector3(-4.5, 0, 2),
       Math.PI / 2,
       10,
       this.scene
@@ -195,13 +217,13 @@ export class CreateShowroom {
     spotLight1.intensity = 250
 
     spotLight1.shadowEnabled = true
-    spotLight1.shadowMaxZ = 10
+    spotLight1.shadowMaxZ = 25
     spotLight1.shadowMinZ = 1
 
     const spotLight2 = new SpotLight(
       "spotLight",
-      new Vector3(-4.5, 6, -2),
-      new Vector3(4.5, -2, 3),
+      new Vector3(0.5, 2, -6),
+      new Vector3(2, 0, 5.5),
       Math.PI / 2,
       10,
       this.scene
@@ -210,8 +232,12 @@ export class CreateShowroom {
     spotLight2.intensity = 250
 
     spotLight2.shadowEnabled = true
-    spotLight2.shadowMaxZ = 10
+    spotLight2.shadowMaxZ = 50
     spotLight2.shadowMinZ = 1
+
+    if (spotLight1 && spotLight2) this.spotLights.push(spotLight1, spotLight2)
+
+    this.CreateGizmos(spotLight2)
   }
 
   async CreateWallLamp(position: Vector3, rotation: number): Promise<void> {
@@ -240,6 +266,15 @@ export class CreateShowroom {
     this.CreateWallLamp(new Vector3(9, 4, 4.5), -Math.PI / 2)
   }
 
+  CreateShadows(spotLight: ShadowLight, model: AbstractMesh): void {
+    const shadowGen = new ShadowGenerator(2048, spotLight)
+    shadowGen.useBlurCloseExponentialShadowMap = true
+
+    model.receiveShadows = true
+    shadowGen.addShadowCaster(model)
+  }
+
+  //Use this only if needed to visualize and manipulate custom lights.
   CreateGizmos(customLight: Light): void {
     const lightGizmo = new LightGizmo()
     lightGizmo.scaleRatio = 2
