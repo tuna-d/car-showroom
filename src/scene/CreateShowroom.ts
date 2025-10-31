@@ -18,9 +18,11 @@ import {
   AbstractMesh,
   ShadowLight,
   AxesViewer,
+  ISceneLoaderProgressEvent,
 } from "@babylonjs/core"
 
 import "@babylonjs/loaders"
+import { CustomLoadingScreen } from "./CustomLoadingScreen"
 
 export class CreateShowroom {
   scene: Scene
@@ -28,9 +30,28 @@ export class CreateShowroom {
   mclaren!: AbstractMesh
   porsche!: AbstractMesh
   spotLights: ShadowLight[] = []
+  loadingScreen: CustomLoadingScreen
 
-  constructor(private canvas: HTMLCanvasElement) {
+  modelCount = 3
+  taskProgress = [0, 0, 0]
+
+  constructor(
+    private canvas: HTMLCanvasElement,
+    private loader: HTMLElement,
+    private loadingBar: HTMLElement,
+    private barPercent: HTMLElement
+  ) {
     this.engine = new Engine(this.canvas, true)
+
+    this.loadingScreen = new CustomLoadingScreen(
+      this.loader,
+      this.loadingBar,
+      this.barPercent
+    )
+
+    this.engine.loadingScreen = this.loadingScreen
+    this.engine.displayLoadingUI()
+
     this.scene = this.CreateScene()
 
     this.CreateEnvironment()
@@ -40,15 +61,36 @@ export class CreateShowroom {
     })
   }
 
+  private calculatePercent(evt: ISceneLoaderProgressEvent): number {
+    let loadStatus = 0
+    if (evt.lengthComputable) {
+      loadStatus = Math.floor((evt.loaded * 100) / evt.total)
+    } else {
+      const dlCount = evt.loaded / (1024 * 1024)
+      loadStatus = Math.min(100, Math.floor(dlCount * 10))
+    }
+
+    return loadStatus
+  }
+
+  private updateOverallProgress() {
+    const sum = this.taskProgress.reduce((a, b) => a + b, 0)
+    const overall = Math.floor(sum / this.modelCount)
+    this.loadingScreen.updateLoadStatus(overall.toString())
+  }
+
   CreateScene(): Scene {
     const scene = new Scene(this.engine)
-    const camera = new FreeCamera("camera", new Vector3(0, 10, -15), this.scene)
+    const camera = new FreeCamera(
+      "camera",
+      new Vector3(0, 3.5, -15),
+      this.scene
+    )
     camera.attachControl()
     camera.speed = 0.2
 
     //Use this only if needed to visualize axes.
     //const axes = new AxesViewer(this.scene, 3)
-
     return scene
   }
 
@@ -56,13 +98,17 @@ export class CreateShowroom {
     this.CreateGround()
     this.CreateSideWalls()
     this.CreateLights()
-    this.PositionWallLamps()
-    this.CreatePorscheModel().then(() =>
-      this.CreateShadows(this.spotLights[0], this.porsche)
-    )
-    this.CreateMclarenModel().then(() =>
-      this.CreateShadows(this.spotLights[1], this.mclaren)
-    )
+
+    const wallLamps = this.PositionWallLamps()
+    const porsche = this.CreatePorscheModel()
+    const mclaren = this.CreateMclarenModel()
+
+    porsche.then(() => this.CreateShadows(this.spotLights[0], this.porsche))
+    mclaren.then(() => this.CreateShadows(this.spotLights[1], this.mclaren))
+
+    Promise.all([wallLamps, porsche, mclaren]).then(() => {
+      this.engine.hideLoadingUI()
+    })
   }
 
   CreateGround(): void {
@@ -186,7 +232,12 @@ export class CreateShowroom {
   }
 
   async CreateMclarenModel(): Promise<void> {
-    const model = await ImportMeshAsync("./models/mclaren.glb", this.scene)
+    const model = await ImportMeshAsync("./models/mclaren.glb", this.scene, {
+      onProgress: (evt) => {
+        this.taskProgress[0] = this.calculatePercent(evt)
+        this.updateOverallProgress()
+      },
+    })
     const mclarenRoot = model.meshes[0]
 
     if (mclarenRoot) this.mclaren = mclarenRoot
@@ -194,8 +245,14 @@ export class CreateShowroom {
     mclarenRoot.position = new Vector3(4.5, 0, 4.5)
     mclarenRoot.rotate(Axis.Y, -(3 * Math.PI) / 4, Space.LOCAL)
   }
+
   async CreatePorscheModel(): Promise<void> {
-    const model = await ImportMeshAsync("./models/911.glb", this.scene)
+    const model = await ImportMeshAsync("./models/911.glb", this.scene, {
+      onProgress: (evt) => {
+        this.taskProgress[1] = this.calculatePercent(evt)
+        this.updateOverallProgress()
+      },
+    })
     const porscheRoot = model.meshes[0]
 
     if (porscheRoot) this.porsche = porscheRoot
@@ -236,8 +293,6 @@ export class CreateShowroom {
     spotLight2.shadowMinZ = 1
 
     if (spotLight1 && spotLight2) this.spotLights.push(spotLight1, spotLight2)
-
-    this.CreateGizmos(spotLight2)
   }
 
   async CreateWallLamp(position: Vector3, rotation: number): Promise<void> {
@@ -259,11 +314,16 @@ export class CreateShowroom {
     pointLight.parent = root
   }
 
-  PositionWallLamps(): void {
-    this.CreateWallLamp(new Vector3(-9, 4, -4.5), Math.PI / 2)
-    this.CreateWallLamp(new Vector3(-9, 4, 4.5), Math.PI / 2)
-    this.CreateWallLamp(new Vector3(9, 4, -4.5), -Math.PI / 2)
-    this.CreateWallLamp(new Vector3(9, 4, 4.5), -Math.PI / 2)
+  PositionWallLamps(): Promise<void> {
+    return Promise.all([
+      this.CreateWallLamp(new Vector3(-9, 4, -4.5), Math.PI / 2),
+      this.CreateWallLamp(new Vector3(-9, 4, 4.5), Math.PI / 2),
+      this.CreateWallLamp(new Vector3(9, 4, -4.5), -Math.PI / 2),
+      this.CreateWallLamp(new Vector3(9, 4, 4.5), -Math.PI / 2),
+    ]).then(() => {
+      this.taskProgress[2] = 100
+      this.updateOverallProgress()
+    })
   }
 
   CreateShadows(spotLight: ShadowLight, model: AbstractMesh): void {
